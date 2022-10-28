@@ -1,0 +1,6 @@
+/cassandra-storage/
+/target/
+/temp-sstables/
+/*.csv
+/*.db
+/*.db-*
