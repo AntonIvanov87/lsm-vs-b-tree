@@ -15,5 +15,6 @@
     <logger name="org.apache.cassandra.db.ColumnFamilyStore" level="warn"/>
     <logger name="org.apache.cassandra.io.sstable.format" level="warn"/>
     <logger name="org.apache.cassandra.utils.OutputHandler" level="warn"/>
+    <logger name="org.apache.cassandra.utils.StatusLogger" level="warn"/>
 
 </configuration>
