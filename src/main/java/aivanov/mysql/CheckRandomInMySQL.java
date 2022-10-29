@@ -1,4 +1,4 @@
-package aivanov.sqlite;
+package aivanov.mysql;
 
 import java.sql.SQLException;
 import java.util.concurrent.ThreadLocalRandom;
@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 import aivanov.Edges;
 import aivanov.SQL;
 
-class CheckRandomInSQLite {
+class CheckRandomInMySQL {
 
   private static final int attempts = 10_000_000;
 
@@ -19,7 +19,7 @@ class CheckRandomInSQLite {
     var lastPrint = System.nanoTime();
 
     // TODO: read-only
-    try (var conn = SQLite.createConnection(true)) {
+    try (var conn = MySQL.createConnection()) {
       try (var preparedSelect = SQL.prepareSelect(conn)) {
         var rand = ThreadLocalRandom.current();
         while (checked < attempts) {
@@ -45,5 +45,4 @@ class CheckRandomInSQLite {
       }
     }
   }
-
 }

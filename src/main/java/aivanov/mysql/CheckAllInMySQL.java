@@ -1,4 +1,4 @@
-package aivanov.sqlite;
+package aivanov.mysql;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,7 +9,7 @@ import aivanov.Edge;
 import aivanov.Edges;
 import aivanov.SQL;
 
-class CheckAllInSQLite {
+class CheckAllInMySQL {
 
   public static void main(String[] args) throws SQLException, IOException {
     var startNanos = System.nanoTime();
@@ -17,7 +17,7 @@ class CheckAllInSQLite {
     var lastChecked = 0L;
     var lastPrint = System.nanoTime();
 
-    try (var conn = SQLite.createConnection(true)) {
+    try (var conn = MySQL.createConnection()) {
       try (var preparedSelect = SQL.prepareSelect(conn)) {
         try (var reader = Files.newBufferedReader(Edges.csvFile)) {
           while (true) {

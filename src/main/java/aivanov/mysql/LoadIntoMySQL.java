@@ -1,4 +1,4 @@
-package aivanov.sqlite;
+package aivanov.mysql;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,8 +9,9 @@ import aivanov.Edge;
 import aivanov.Edges;
 import aivanov.SQL;
 
-class LoadIntoSQLite {
+class LoadIntoMySQL {
 
+  // TODO:
   private static final int edgesPerBatch = 1_000;
 
   public static void main(String[] args) throws SQLException, IOException {
@@ -19,7 +20,8 @@ class LoadIntoSQLite {
     var lastInserted = 0L;
     var lastPrint = System.nanoTime();
 
-    try (var conn = SQLite.createConnection(false)) {
+    MySQL.recreateDatabase();
+    try (var conn = MySQL.createConnection()) {
       SQL.createTable(conn);
 
       try (var preparedInsert = conn.prepareStatement(SQL.insertQuery)) {
@@ -64,4 +66,6 @@ class LoadIntoSQLite {
       }
     }
   }
+
+
 }
