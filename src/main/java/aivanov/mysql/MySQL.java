@@ -9,7 +9,8 @@ class MySQL {
   static Connection createConnection() throws SQLException {
     // TODO: options
     // TODO: unix domain socket
-    return DriverManager.getConnection("jdbc:mysql://localhost/test?user=root");
+    //return DriverManager.getConnection("jdbc:mysql://localhost/test?user=root");
+    return DriverManager.getConnection("jdbc:mysql://localhost/test?user=root&socketFactory=org.newsclub.net.mysql.AFUNIXDatabaseSocketFactory&junixsocket.file=/tmp/mysql.sock&sslMode=DISABLED");
   }
 
   static void recreateDatabase() throws SQLException {
