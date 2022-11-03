@@ -1,4 +1,4 @@
-package aivanov.cassandra;
+package aivanov;
 
 import java.io.IOException;
 
