@@ -9,15 +9,15 @@ import org.apache.cassandra.transport.messages.ResultMessage;
 import org.slf4j.LoggerFactory;
 import scala.Option;
 
-class CassandraServer {
+class CassandraRPCServer {
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         var cassandraDaemon = Cassandra.start();
         try {
             var server = ThriftMux.server().serveIface("127.0.0.1:9090", new EdgeServiceImpl());
             Await.result(server.closeFuture());
         } catch (Exception e) {
-            LoggerFactory.getLogger(CassandraServer.class).error("Unexpected error", e);
+            LoggerFactory.getLogger(CassandraRPCServer.class).error("Unexpected error", e);
         } finally {
             cassandraDaemon.deactivate();
         }

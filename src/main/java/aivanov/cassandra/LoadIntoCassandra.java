@@ -1,7 +1,9 @@
 package aivanov.cassandra;
 
-import aivanov.Edge;
-import aivanov.Edges;
+import aivanov.ProgressPrinter;
+import aivanov.edge.BinFileIterator;
+import aivanov.edge.Edge;
+import aivanov.edge.Edges;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.io.sstable.CQLSSTableWriter;
 
@@ -23,10 +25,7 @@ class LoadIntoCassandra {
     public static void main(String[] args) throws IOException {
         var cassandraDaemon = Cassandra.start();
         try {
-            var startNanos = System.nanoTime();
-            var parsed = 0;
-            var prevParsed = 0;
-            var prevPrintNanos = System.nanoTime();
+            var progressPrinter = new ProgressPrinter(Edges.numEdgesInFile);
 
             Cassandra.createKeyspace();
             Cassandra.createTable();
@@ -39,36 +38,18 @@ class LoadIntoCassandra {
             var sstWriterBuilder = CQLSSTableWriter.builder().inDirectory(tempSSTablesDir.toFile()).forTable(Cassandra.tableSchema).using(Cassandra.insertQuery).withBufferSizeInMB(256);
             var sstWriter = sstWriterBuilder.build();
             try {
-                var prevSId = -1L;
-                var prevDId = -1L;
-                try (var lines = Files.newBufferedReader(Edges.csvFile)) {
-                    while (true) {
-                        var line = lines.readLine();
-                        if (line == null) {
-                            break;
-                        }
-                        var edge = Edge.fromCSV(line);
-
-                        Edges.checkIncreasing(edge.sId, edge.dId, prevSId, prevDId);
-                        prevSId = edge.sId;
-                        prevDId = edge.dId;
-
+                try (var edges = new BinFileIterator()) {
+                    while (edges.hasNext()) {
+                        var edge = edges.next();
                         appendEdgeToTempSSTable(edge, sstWriter);
-                        parsed++;
-                        if (parsed % edgesInBatch == 0) {
+                        progressPrinter.incProgress();
+                        if (progressPrinter.processed() % edgesInBatch == 0) {
                             sstWriter.close();
                             sstWriter = null;
 
                             importTempSSTables(cfs);
                             deleteTempSSTables();
                             sstWriter = sstWriterBuilder.build();
-                        }
-
-                        var nanoTime = System.nanoTime();
-                        if (TimeUnit.NANOSECONDS.toSeconds(nanoTime - prevPrintNanos) >= 10) {
-                            Edges.printProgress(prevParsed, parsed, Edges.numEdgesInCSVFile, startNanos);
-                            prevParsed = parsed;
-                            prevPrintNanos = nanoTime;
                         }
                     }
                 }
@@ -86,9 +67,9 @@ class LoadIntoCassandra {
 
             // TODO: create indices
 
-            var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNanos);
-            var totalPerSec = parsed / sec;
-            System.out.println("Inserted " + parsed + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
+            var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - progressPrinter.startNanos);
+            var totalPerSec = progressPrinter.processed() / sec;
+            System.out.println("Inserted " + progressPrinter.processed() + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
         } finally {
             cassandraDaemon.deactivate();
         }

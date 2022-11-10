@@ -1,6 +1,6 @@
 package aivanov.cassandra;
 
-import aivanov.edge.Edges;
+import aivanov.edge.BinFileAsArray;
 import org.apache.cassandra.service.CassandraDaemon;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.openjdk.jmh.annotations.*;
@@ -8,14 +8,15 @@ import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
+import java.io.IOException;
 import java.util.concurrent.ThreadLocalRandom;
 
 @State(Scope.Benchmark)
-public class CheckRandomInCassandra {
+public class CheckRandomExistingInCassandra {
 
     public static void main(String[] args) throws RunnerException {
         var opt = new OptionsBuilder()
-                .include(CheckRandomInCassandra.class.getSimpleName())
+                .include(CheckRandomExistingInCassandra.class.getSimpleName())
                 .forks(1)
                 .threads(3)
                 .build();
@@ -24,11 +25,19 @@ public class CheckRandomInCassandra {
 
     private CassandraDaemon cassandraDaemon;
     private ResultMessage.Prepared preparedSelect;
+    private ThreadLocal<BinFileAsArray> edges;
 
     @Setup(Level.Trial)
     public void setup() {
         cassandraDaemon = Cassandra.start();
         preparedSelect = Cassandra.prepareSelect();
+        edges = ThreadLocal.withInitial(() -> {
+            try {
+                return new BinFileAsArray();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @TearDown(Level.Trial)
@@ -37,11 +46,14 @@ public class CheckRandomInCassandra {
     }
 
     @Benchmark
-    public boolean benchmark() {
-        var random = ThreadLocalRandom.current();
-        var sId = random.nextLong(Edges.minEdgeId, Edges.maxEdgeId + 1);
-        var dId = random.nextLong(Edges.minEdgeId, Edges.maxEdgeId + 1);
-        return Cassandra.selectEdge(sId, dId, preparedSelect).isPresent();
+    public long benchmark() throws IOException {
+        var randomIndex = ThreadLocalRandom.current().nextLong(0, edges.get().length);
+        var randomEdge = edges.get().get(randomIndex);
+        var fetchedEdge = Cassandra.selectEdge(randomEdge.sId, randomEdge.dId, preparedSelect);
+        if (fetchedEdge.isEmpty()) {
+            throw new IllegalStateException(randomEdge + " not found in DB");
+        }
+        return fetchedEdge.get().sId();
     }
 
 }

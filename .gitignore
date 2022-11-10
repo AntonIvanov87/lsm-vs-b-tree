@@ -1,6 +1,6 @@
+/bloom-filter-data/
 /cassandra-storage/
+/source-data/
+/sqlite-storage/
 /target/
 /temp-sstables/
-/*.csv
-/*.db
-/*.db-*

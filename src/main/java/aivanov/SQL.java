@@ -1,5 +1,8 @@
 package aivanov;
 
+import aivanov.edge.Edge;
+
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -38,32 +41,28 @@ public class SQL {
         }
     }
 
-    public static PreparedStatement prepareSelect(Connection conn) throws SQLException {
-        return conn.prepareStatement("SELECT a_st, a_ut, pos, ann FROM edges WHERE s_id = ? AND d_id = ?");
-    }
+    public static final String selectQuery = "SELECT a_st, a_ut, pos, ann FROM edges WHERE s_id = ? AND d_id = ?";
 
-    public static Optional<aivanov.thriftscala.Edge> selectEdge(long sId, long dId, PreparedStatement preparedSelect) throws SQLException {
-        preparedSelect.setLong(1, sId);
-        preparedSelect.setLong(2, dId);
-        try (var rs = preparedSelect.executeQuery()) {
-            if (!rs.next()) {
-                return Optional.empty();
+    // private static final ForkJoinPool executor = (ForkJoinPool) Executors.newWorkStealingPool(2048);
+
+    public static Optional<aivanov.thriftscala.Edge> selectEdge(long sId, long dId, DataSource dataSource) throws SQLException {
+        // if (executor.getQueuedSubmissionCount() > 2048) {
+        //     throw new RejectedExecutionException("Too many queued tasks");
+        // }
+        // return executor.submit(() -> {
+            try (var conn = dataSource.getConnection()) {
+                var preparedSelect = conn.prepareStatement(selectQuery);
+                preparedSelect.setLong(1, sId);
+                preparedSelect.setLong(2, dId);
+
+                try (var rs = preparedSelect.executeQuery()) {
+                    if (!rs.next()) {
+                        return Optional.<aivanov.thriftscala.Edge>empty();
+                    }
+                    return Optional.of(aivanov.thriftscala.Edge.apply(sId, dId, rs.getByte("a_st"), rs.getLong("a_ut"), rs.getLong("pos"), rs.getByte("ann")));
+                }
             }
-            return Optional.of(aivanov.thriftscala.Edge.apply(sId, dId, rs.getByte("a_st"), rs.getLong("a_ut"), rs.getLong("pos"), rs.getByte("ann")));
-        }
-    }
-
-    public static void checkEdge(Edge edge, PreparedStatement preparedSelect) throws SQLException {
-        var edgeOpt = selectEdge(edge.sId, edge.dId, preparedSelect);
-        if (edgeOpt.isEmpty()) {
-            throw new IllegalStateException("Have not found an inserted edge (" + edge.sId + ", " + edge.dId + ")");
-        }
-
-        if (edgeOpt.get().st() != edge.st) {
-            throw new IllegalStateException("a_st of selected edge (" + edgeOpt.get() + ") is not equal to required st (" + edge.st + ")");
-        }
-
-
+        // }).get();
     }
 
     private SQL() {

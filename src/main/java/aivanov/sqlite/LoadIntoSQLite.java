@@ -1,67 +1,54 @@
 package aivanov.sqlite;
 
+import aivanov.ProgressPrinter;
+import aivanov.SQL;
+import aivanov.edge.BinFileIterator;
+import aivanov.edge.EdgeKey;
+import aivanov.edge.Edges;
+import com.google.common.hash.BloomFilter;
+
 import java.io.IOException;
-import java.nio.file.Files;
 import java.sql.SQLException;
 import java.util.concurrent.TimeUnit;
 
-import aivanov.Edge;
-import aivanov.Edges;
-import aivanov.SQL;
-
 class LoadIntoSQLite {
 
-  private static final int edgesPerBatch = 1_000;
+    private static final int edgesPerBatch = 1_000;
 
-  public static void main(String[] args) throws SQLException, IOException {
-    var startNanos = System.nanoTime();
-    var inserted = 0L;
-    var lastInserted = 0L;
-    var lastPrint = System.nanoTime();
+    public static void main(String[] args) throws SQLException, IOException {
+        var progressPrinter = new ProgressPrinter(Edges.numEdgesInFile);
+        try (var dataSource = SQLite.createDataSource(false)) {
+            try (var conn = dataSource.getConnection()) {
+                SQL.createTable(conn);
+                var bloomFilter = BloomFilter.create(EdgeKey.funnel, Edges.numEdgesInFile);
 
-    try (var conn = SQLite.createConnection(false)) {
-      SQL.createTable(conn);
+                try (var preparedInsert = conn.prepareStatement(SQL.insertQuery)) {
+                    try (var edges = new BinFileIterator()) {
+                        conn.setAutoCommit(false);
+                        while (edges.hasNext()) {
+                            var edge = edges.next();
+                            SQL.insert(edge, preparedInsert);
+                            bloomFilter.put(new EdgeKey(edge.sId, edge.dId));
+                            progressPrinter.incProgress();
+                            if (progressPrinter.processed() % edgesPerBatch == 0) {
+                                conn.commit();
+                                conn.setAutoCommit(false);
+                            }
+                        }
 
-      try (var preparedInsert = conn.prepareStatement(SQL.insertQuery)) {
-        var prevSId = 0L;
-        var prevDId = 0L;
-        try (var reader = Files.newBufferedReader(Edges.csvFile)) {
-          conn.setAutoCommit(false);
-          while (true) {
-            var line = reader.readLine();
-            if (line == null) {
-              break;
+                        conn.commit();
+
+                        // TODO: create indices
+
+                    }
+                }
+
+                Edges.storeBloomFilter(bloomFilter);
             }
 
-            var edge = Edge.fromCSV(line);
-            Edges.checkIncreasing(edge.sId, edge.dId, prevSId, prevDId);
-            prevSId = edge.sId;
-            prevDId = edge.dId;
-
-            SQL.insert(edge, preparedInsert);
-            inserted++;
-            if (inserted % edgesPerBatch == 0) {
-              conn.commit();
-              conn.setAutoCommit(false);
-            }
-
-            var nanoTime = System.nanoTime();
-            if (TimeUnit.NANOSECONDS.toSeconds(nanoTime - lastPrint) >= 10) {
-              Edges.printProgress(lastInserted, inserted, Edges.numEdgesInCSVFile, startNanos);
-              lastInserted = inserted;
-              lastPrint = nanoTime;
-            }
-          }
-
-          conn.commit();
-
-          // TODO: create indices
-
-          var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNanos);
-          var totalPerSec = inserted / sec;
-          System.out.println("Inserted " + inserted + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
+            var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - progressPrinter.startNanos);
+            var totalPerSec = progressPrinter.processed() / sec;
+            System.out.println("Inserted " + progressPrinter.processed() + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
         }
-      }
     }
-  }
 }

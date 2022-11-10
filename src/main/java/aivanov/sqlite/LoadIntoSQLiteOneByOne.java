@@ -1,58 +1,36 @@
 package aivanov.sqlite;
 
-import aivanov.Edge;
-import aivanov.Edges;
+import aivanov.ProgressPrinter;
 import aivanov.SQL;
+import aivanov.edge.BinFileIterator;
+import aivanov.edge.Edges;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.sql.SQLException;
 import java.util.concurrent.TimeUnit;
 
 class LoadIntoSQLiteOneByOne {
 
-  public static void main(String[] args) throws SQLException, IOException {
-    var startNanos = System.nanoTime();
-    var inserted = 0L;
-    var lastInserted = 0L;
-    var lastPrint = System.nanoTime();
+    public static void main(String[] args) throws SQLException, IOException {
+        var progressPrinter = new ProgressPrinter(Edges.numEdgesInFile);
+        try (var dataSource = SQLite.createDataSource(false)) {
+            try (var conn = dataSource.getConnection()) {
+                SQL.createTable(conn);
+                try (var preparedInsert = conn.prepareStatement(SQL.insertQuery)) {
+                    try (var edges = new BinFileIterator()) {
+                        while (edges.hasNext()) {
+                            var edge = edges.next();
+                            SQL.insert(edge, preparedInsert);
+                            progressPrinter.incProgress();
+                        }
 
-    try (var conn = SQLite.createConnection(false)) {
-      SQL.createTable(conn);
-
-      try (var preparedInsert = conn.prepareStatement(SQL.insertQuery)) {
-        var prevSId = 0L;
-        var prevDId = 0L;
-        try (var reader = Files.newBufferedReader(Edges.csvFile)) {
-          while (true) {
-            var line = reader.readLine();
-            if (line == null) {
-              break;
+                        // TODO: create indices
+                    }
+                }
             }
-
-            var edge = Edge.fromCSV(line);
-            Edges.checkIncreasing(edge.sId, edge.dId, prevSId, prevDId);
-            prevSId = edge.sId;
-            prevDId = edge.dId;
-
-            SQL.insert(edge, preparedInsert);
-            inserted++;
-
-            var nanoTime = System.nanoTime();
-            if (TimeUnit.NANOSECONDS.toSeconds(nanoTime - lastPrint) >= 10) {
-              Edges.printProgress(lastInserted, inserted, Edges.numEdgesInCSVFile, startNanos);
-              lastInserted = inserted;
-              lastPrint = nanoTime;
-            }
-          }
-
-          // TODO: create indices
-
-          var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNanos);
-          var totalPerSec = inserted / sec;
-          System.out.println("Inserted " + inserted + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
         }
-      }
+        var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - progressPrinter.startNanos);
+        var totalPerSec = progressPrinter.processed() / sec;
+        System.out.println("Inserted " + progressPrinter.processed() + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
     }
-  }
 }

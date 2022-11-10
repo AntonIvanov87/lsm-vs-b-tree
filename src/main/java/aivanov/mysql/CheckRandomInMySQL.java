@@ -1,48 +1,46 @@
 package aivanov.mysql;
 
-import aivanov.Edges;
 import aivanov.SQL;
+import aivanov.edge.Edges;
+import com.zaxxer.hikari.HikariDataSource;
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.RunnerException;
+import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 import java.sql.SQLException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 
-class CheckRandomInMySQL {
+@State(Scope.Benchmark)
+public class CheckRandomInMySQL {
 
-    private static final int attempts = 10_000_000;
+    public static void main(String[] args) throws RunnerException {
+        var opt = new OptionsBuilder()
+                .include(CheckRandomInMySQL.class.getSimpleName())
+                .forks(1)
+                .threads(3)
+                .build();
+        new Runner(opt).run();
+    }
 
-    public static void main(String[] args) throws SQLException {
-        var startNanos = System.nanoTime();
-        var checked = 0L;
-        var exists = 0L;
-        var lastChecked = 0L;
-        var lastPrint = System.nanoTime();
+    private HikariDataSource dataSource;
 
-        // TODO: read-only
-        try (var conn = MySQL.createConnection()) {
-            try (var preparedSelect = SQL.prepareSelect(conn)) {
-                var rand = ThreadLocalRandom.current();
-                while (checked < attempts) {
-                    var sId = rand.nextLong(Edges.minEdgeId, Edges.maxEdgeId + 1);
-                    var dId = rand.nextLong(Edges.minEdgeId, Edges.maxEdgeId + 1);
-                    if (SQL.selectEdge(sId, dId, preparedSelect).isPresent()) {
-                        exists++;
-                    }
-                    checked++;
+    @Setup(Level.Trial)
+    public void setup() {
+        dataSource = MySQL.createDataSource(true);
+    }
 
-                    var nanoTime = System.nanoTime();
-                    if (TimeUnit.NANOSECONDS.toSeconds(nanoTime - lastPrint) >= 10) {
-                        Edges.printProgress(lastChecked, checked, attempts, startNanos);
-                        System.out.println("Hit rate = " + (100.0 * exists / checked) + "%");
-                        lastChecked = checked;
-                        lastPrint = nanoTime;
-                    }
-                }
+    @TearDown(Level.Trial)
+    public void tearDown() {
+        dataSource.close();
+    }
 
-                var sec = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNanos);
-                var totalPerSec = checked / sec;
-                System.out.println("Checked " + checked + " edges in " + sec + " sec, average speed " + totalPerSec + " / sec");
-            }
-        }
+    @Benchmark
+    public boolean benchmark() throws SQLException, ExecutionException, InterruptedException {
+        var random = ThreadLocalRandom.current();
+        var sId = random.nextLong(Edges.minEdgeId, Edges.maxEdgeId + 1);
+        var dId = random.nextLong(Edges.minEdgeId, Edges.maxEdgeId + 1);
+        return SQL.selectEdge(sId, dId, dataSource).isPresent();
     }
 }
