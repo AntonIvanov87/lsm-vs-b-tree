@@ -7,6 +7,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RejectedExecutionException;
 
 public class SQL {
 
@@ -41,28 +45,34 @@ public class SQL {
         }
     }
 
-    public static final String selectQuery = "SELECT a_st, a_ut, pos, ann FROM edges WHERE s_id = ? AND d_id = ?";
+    // public static final String selectQuery = "SELECT a_st, a_ut, pos, ann FROM edges WHERE s_id = ? AND d_id = ?";
+    public static String selectByVerticesQuery(long sId, long dId) {
+        return "SELECT a_st, a_ut, pos, ann FROM edges WHERE s_id = " + sId + " AND d_id = " + dId;
+    }
 
-    // private static final ForkJoinPool executor = (ForkJoinPool) Executors.newWorkStealingPool(2048);
+    private static final ForkJoinPool executor = (ForkJoinPool) Executors.newWorkStealingPool(2048);
 
-    public static Optional<aivanov.thriftscala.Edge> selectEdge(long sId, long dId, DataSource dataSource) throws SQLException {
-        // if (executor.getQueuedSubmissionCount() > 2048) {
-        //     throw new RejectedExecutionException("Too many queued tasks");
-        // }
-        // return executor.submit(() -> {
+    public static Optional<aivanov.thriftscala.Edge> selectEdge(long sId, long dId, DataSource dataSource) throws SQLException, ExecutionException, InterruptedException {
+        if (executor.getQueuedSubmissionCount() > 2048) {
+            throw new RejectedExecutionException("Too many queued tasks");
+        }
+        return executor.submit(() -> {
             try (var conn = dataSource.getConnection()) {
-                var preparedSelect = conn.prepareStatement(selectQuery);
-                preparedSelect.setLong(1, sId);
-                preparedSelect.setLong(2, dId);
+                try (var statement = conn.createStatement()) {
+                // try (var preparedSelect = conn.prepareStatement(selectQuery)) {
+                //     preparedSelect.setLong(1, sId);
+                //     preparedSelect.setLong(2, dId);
 
-                try (var rs = preparedSelect.executeQuery()) {
-                    if (!rs.next()) {
-                        return Optional.<aivanov.thriftscala.Edge>empty();
+                    // try (var rs = preparedSelect.executeQuery()) {
+                    try (var rs = statement.executeQuery(selectByVerticesQuery(sId, dId))) {
+                        if (!rs.next()) {
+                            return Optional.<aivanov.thriftscala.Edge>empty();
+                        }
+                        return Optional.of(aivanov.thriftscala.Edge.apply(sId, dId, rs.getByte("a_st"), rs.getLong("a_ut"), rs.getLong("pos"), rs.getByte("ann")));
                     }
-                    return Optional.of(aivanov.thriftscala.Edge.apply(sId, dId, rs.getByte("a_st"), rs.getLong("a_ut"), rs.getLong("pos"), rs.getByte("ann")));
                 }
             }
-        // }).get();
+        }).get();
     }
 
     private SQL() {

@@ -4,7 +4,6 @@ import aivanov.SQL;
 import aivanov.thriftscala.Edge;
 import com.twitter.finagle.Mysql;
 import com.twitter.finagle.mysql.Client;
-import com.twitter.finagle.mysql.Parameter;
 import com.twitter.util.Await;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -17,7 +16,9 @@ class MySQL {
     static HikariDataSource createDataSource(boolean readOnly) {
         var dataSource = new HikariDataSource();
         // dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/test?cachePrepStmts=true");
-        dataSource.setJdbcUrl("jdbc:mysql://localhost/test?cachePrepStmts=true&socketFactory=org.newsclub.net.mysql.AFUNIXDatabaseSocketFactory&junixsocket.file=/tmp/mysql.sock&sslMode=DISABLED");
+        dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/test");
+        // dataSource.setJdbcUrl("jdbc:mysql://localhost/test?cachePrepStmts=true&socketFactory=org.newsclub.net.mysql.AFUNIXDatabaseSocketFactory&junixsocket.file=/tmp/mysql.sock&sslMode=DISABLED");
+        // dataSource.setJdbcUrl("jdbc:mysql://localhost/test?socketFactory=org.newsclub.net.mysql.AFUNIXDatabaseSocketFactory&junixsocket.file=/tmp/mysql.sock&sslMode=DISABLED");
         dataSource.setUsername("root");
         dataSource.setMaximumPoolSize(Runtime.getRuntime().availableProcessors() * 2);
         dataSource.setReadOnly(readOnly);
@@ -27,6 +28,7 @@ class MySQL {
 
     static Client createFinagleMySQLClient() {
         return Mysql.client()
+                // .withMaxConcurrentPrepareStatements(20)
                 .withNoOpportunisticTls()
                 .withCredentials("root", null)
                 .withDatabase("test")
@@ -48,8 +50,9 @@ class MySQL {
     }
 
     static Optional<Edge> selectEdge(long sId, long dId, Client client) throws Exception {
-        var preparedSelect = client.prepare(SQL.selectQuery).asJava();
-        var rsFuture = preparedSelect.read(Parameter.of(sId), Parameter.of(dId));
+        // var preparedSelect = client.prepare(SQL.selectQuery).asJava();
+        // var rsFuture = preparedSelect.read(Parameter.of(sId), Parameter.of(dId));
+        var rsFuture = client.read(SQL.selectByVerticesQuery(sId, dId));
         var rs = Await.result(rsFuture);
         var rows = rs.rows();
         if (rows.isEmpty()) {
